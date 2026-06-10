@@ -30,12 +30,12 @@ runs and stays on your own computer — no uploads, no accounts.
 1. **Install Python** from [python.org/downloads](https://www.python.org/downloads/).
    During installation, make sure to tick **"Add Python to PATH"**.
 2. **Download the app**: on
-   [this repository's page](https://github.com/deadlydonkeykong1337-netizen/StarcraftReplayTracker),
+   [this repository's page](https://github.com/deadlydonkeykong1337-netizen/SC2ReplayTracker),
    click the green **Code** button → **Download ZIP**, then right-click the
    downloaded ZIP → **Extract All** (anywhere you like, e.g. your user folder).
 
    *Or, if you have git:*
-   `git clone https://github.com/deadlydonkeykong1337-netizen/StarcraftReplayTracker.git`
+   `git clone https://github.com/deadlydonkeykong1337-netizen/SC2ReplayTracker.git`
 3. **Run `setup.bat`** (double-click it) in the extracted folder. This is a
    one-time step that installs everything the app needs. Wait for "Done!".
 4. **Run `Start SC2 Tracker.bat`** (double-click) to launch the app.
