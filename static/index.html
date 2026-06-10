@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SC2 Replay Tracker</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="logo">&#9670;</span>
+    <h1>SC2 Replay Tracker</h1>
+  </div>
+  <nav>
+    <button class="tab active" data-tab="dashboard">Dashboard</button>
+    <button class="tab" data-tab="replays">Replays</button>
+    <button class="tab" data-tab="trends">Trends</button>
+    <button class="tab" data-tab="settings">Settings</button>
+  </nav>
+  <div id="scan-indicator" class="scan-indicator hidden">
+    <span class="spinner"></span><span id="scan-text">Scanning…</span>
+  </div>
+</header>
+
+<main>
+  <!-- Dashboard -->
+  <section id="tab-dashboard" class="tab-panel">
+    <div id="dash-empty" class="empty hidden">
+      <h2>No games yet</h2>
+      <p>Waiting for the first replay scan to finish, or no replay folders were
+         found. Check the <b>Settings</b> tab to configure your replay folders.</p>
+    </div>
+    <div id="dash-content" class="hidden">
+      <div class="panel" id="latest-panel">
+        <h2>Latest game</h2>
+        <div id="latest-content"></div>
+      </div>
+      <div class="cards" id="summary-cards"></div>
+      <div class="grid-2">
+        <div class="panel">
+          <h2>Win rate by matchup</h2>
+          <div id="matchup-bars"></div>
+        </div>
+        <div class="panel">
+          <h2>Win rate by race played</h2>
+          <div id="race-bars"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Win rate by opponent MMR</h2>
+        <div id="mmr-table-wrap"></div>
+      </div>
+      <div class="grid-2">
+        <div class="panel">
+          <h2>Maps by matchup</h2>
+          <div id="map-table-wrap" class="scroll-table"></div>
+        </div>
+        <div class="panel">
+          <h2>Recent games</h2>
+          <table class="data clickable" id="recent-table">
+            <thead><tr><th>Result</th><th>Matchup</th><th>Opponent</th><th>Map</th><th>When</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Replays -->
+  <section id="tab-replays" class="tab-panel hidden">
+    <div class="filters">
+      <input id="f-search" type="text" placeholder="Search map or player…">
+      <select id="f-matchup"><option value="">All matchups</option></select>
+      <select id="f-map"><option value="">All maps</option></select>
+      <select id="f-result">
+        <option value="">Any result</option>
+        <option value="Win">Wins</option>
+        <option value="Loss">Losses</option>
+      </select>
+      <span id="replay-count" class="muted"></span>
+    </div>
+    <table class="data clickable" id="replays-table">
+      <thead><tr>
+        <th>Result</th><th>Matchup</th><th>Opponent</th><th>Map</th>
+        <th>Length</th><th>APM</th><th>Played</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="pager">
+      <button id="prev-page">&larr; Prev</button>
+      <span id="page-info"></span>
+      <button id="next-page">Next &rarr;</button>
+    </div>
+  </section>
+
+  <!-- Trends -->
+  <section id="tab-trends" class="tab-panel hidden">
+    <div class="grid-2">
+      <div class="panel">
+        <h2>Win rate by game duration</h2>
+        <div class="chart-tabs"><span class="legend" id="legend-durwin"></span></div>
+        <div id="chart-durwin" class="chart"></div>
+      </div>
+      <div class="panel">
+        <h2>Game count by game duration</h2>
+        <div class="chart-tabs"><span class="legend" id="legend-durcount"></span></div>
+        <div id="chart-durcount" class="chart"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Win rate &mdash; rolling 50 games</h2>
+      <div id="chart-winrate" class="chart"></div>
+    </div>
+    <div class="panel">
+      <h2>APM &mdash; rolling 20 games</h2>
+      <div id="chart-apm" class="chart"></div>
+    </div>
+    <div class="panel">
+      <h2>Game length (minutes) &mdash; rolling 20 games</h2>
+      <div id="chart-duration" class="chart"></div>
+    </div>
+  </section>
+
+  <!-- Settings -->
+  <section id="tab-settings" class="tab-panel hidden">
+    <div class="panel">
+      <h2>Player names</h2>
+      <p class="muted">Your in-game names (comma separated). Stats are computed
+         from this player's perspective. Auto-detected on first scan.</p>
+      <input id="s-names" type="text" placeholder="e.g. MyBarcode, SmurfName">
+    </div>
+    <div class="panel">
+      <h2>Replay folders</h2>
+      <p class="muted">One folder per line. Subfolders are scanned too.</p>
+      <textarea id="s-dirs" rows="5" spellcheck="false"></textarea>
+      <div id="s-dirs-status" class="muted"></div>
+    </div>
+    <div class="actions">
+      <button id="s-save" class="primary">Save settings</button>
+      <button id="s-rescan">Rescan replays</button>
+      <span id="s-msg" class="muted"></span>
+    </div>
+    <div class="panel">
+      <h2>Database</h2>
+      <div id="s-counts" class="muted"></div>
+    </div>
+  </section>
+</main>
+
+<!-- Replay detail modal -->
+<div id="modal" class="modal hidden">
+  <div class="modal-box">
+    <button class="modal-close" id="modal-close">&times;</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
