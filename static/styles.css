@@ -254,6 +254,33 @@ button:disabled { opacity: 0.4; cursor: default; }
 .legend-item { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
+/* Fights */
+.fights-section { margin-bottom: 18px; }
+.fights-section h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+}
+.fight-row {
+  display: grid;
+  grid-template-columns: 56px 1fr 180px;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(38, 50, 71, 0.5);
+  font-size: 13px;
+}
+.fight-time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.fight-sides { display: flex; flex-direction: column; gap: 4px; }
+.fight-side { display: flex; align-items: center; gap: 8px; }
+.fight-outcome { text-align: right; font-weight: 600; font-size: 12.5px; }
+@media (max-width: 760px) {
+  .fight-row { grid-template-columns: 48px 1fr; }
+  .fight-outcome { grid-column: 2; text-align: left; }
+}
+
 /* Head-to-head */
 .opp-link { color: var(--accent); cursor: pointer; }
 .opp-link:hover { text-decoration: underline; }

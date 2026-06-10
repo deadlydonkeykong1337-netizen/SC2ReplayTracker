@@ -15,7 +15,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app = FastAPI(title="SC2 Replay Tracker")
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 @app.on_event("startup")

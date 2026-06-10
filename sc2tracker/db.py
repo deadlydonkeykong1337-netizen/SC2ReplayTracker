@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS replays (
     version TEXT,
     region TEXT,
     matchup TEXT,
+    fights TEXT,
     parse_error TEXT,
     imported_at TEXT
 );
@@ -43,7 +44,9 @@ CREATE TABLE IF NOT EXISTS players (
     avg_unspent_gas REAL,
     collection_rate REAL,
     mmr REAL,
-    timeseries TEXT
+    timeseries TEXT,
+    pid INTEGER,
+    trade_efficiency REAL
 );
 CREATE INDEX IF NOT EXISTS idx_players_replay ON players(replay_id);
 CREATE INDEX IF NOT EXISTS idx_players_name ON players(name);
@@ -72,6 +75,9 @@ _PLAYER_MIGRATIONS = [
     "ALTER TABLE players ADD COLUMN collection_rate REAL",
     "ALTER TABLE players ADD COLUMN mmr REAL",
     "ALTER TABLE players ADD COLUMN timeseries TEXT",
+    "ALTER TABLE players ADD COLUMN pid INTEGER",
+    "ALTER TABLE players ADD COLUMN trade_efficiency REAL",
+    "ALTER TABLE replays ADD COLUMN fights TEXT",
 ]
 
 
@@ -148,11 +154,13 @@ def insert_replay(data, players):
             """INSERT OR IGNORE INTO replays
                (path, filename, file_hash, map_name, played_at, duration_seconds,
                 game_type, category, expansion, version, region, matchup,
-                parse_error, imported_at)
+                fights, parse_error, imported_at)
                VALUES (:path, :filename, :file_hash, :map_name, :played_at,
                        :duration_seconds, :game_type, :category, :expansion,
-                       :version, :region, :matchup, :parse_error, :imported_at)""",
-            {**data, "imported_at": now},
+                       :version, :region, :matchup, :fights, :parse_error,
+                       :imported_at)""",
+            {**data, "fights": json.dumps(data.get("fights") or []),
+             "imported_at": now},
         )
         if cur.rowcount == 0:
             return None
@@ -163,8 +171,8 @@ def insert_replay(data, players):
                    (replay_id, name, race, team, result, apm, is_human,
                     highest_league, build_order, spm, supply_blocked_seconds,
                     avg_unspent_minerals, avg_unspent_gas, collection_rate,
-                    mmr, timeseries)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    mmr, timeseries, pid, trade_efficiency)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     replay_id,
                     p.get("name"),
@@ -182,6 +190,8 @@ def insert_replay(data, players):
                     p.get("collection_rate"),
                     p.get("mmr"),
                     json.dumps(p.get("timeseries") or []),
+                    p.get("pid"),
+                    p.get("trade_efficiency"),
                 ),
             )
         return replay_id
@@ -216,6 +226,7 @@ def my_games(names=None):
                        me.avg_unspent_minerals AS my_unspent_minerals,
                        me.avg_unspent_gas AS my_unspent_gas,
                        me.collection_rate AS my_collection_rate,
+                       me.trade_efficiency AS my_trade_eff,
                        me.mmr AS my_mmr,
                        opp.name AS opp_name, opp.race AS opp_race,
                        opp.apm AS opp_apm, opp.mmr AS opp_mmr
@@ -287,6 +298,7 @@ def replay_detail(replay_id):
             "SELECT * FROM players WHERE replay_id=? ORDER BY team, id", (replay_id,)
         ).fetchall()
     out = dict(rep)
+    out["fights"] = json.loads(out.get("fights") or "[]")
     out["players"] = []
     for p in players:
         d = dict(p)

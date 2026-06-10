@@ -139,6 +139,7 @@ _LATEST_METRICS = [
     ("my_unspent_minerals", "Avg unspent minerals", "down", "num"),
     ("my_unspent_gas", "Avg unspent gas", "down", "num"),
     ("my_collection_rate", "Collection rate", "up", "num"),
+    ("my_trade_eff", "Trade efficiency", "up", "ratio"),
     ("duration_seconds", "Game length", None, "time"),
 ]
 

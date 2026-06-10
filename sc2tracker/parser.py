@@ -132,6 +132,100 @@ def _player_metrics(replay, player):
     return metrics
 
 
+# Fight detection: cluster unit deaths in time + space
+_FIGHT_GAP = 15        # max game-seconds between deaths in the same fight
+_FIGHT_RADIUS = 30     # max map distance from the fight's center
+_FIGHT_MIN_DEATHS = 3
+_FIGHT_MIN_VALUE = 500  # total resources destroyed (both players)
+
+
+def _detect_fights(replay, speed):
+    """Cluster unit deaths into engagements. Returns a list of fights with
+    per-player losses (resource value + unit counts) and the trade winner."""
+    deaths = []
+    try:
+        events = replay.tracker_events
+    except AttributeError:
+        return []
+    for ev in events:
+        if type(ev).__name__ != "UnitDiedEvent":
+            continue
+        unit = getattr(ev, "unit", None)
+        if unit is None or unit.owner is None:
+            continue
+        if getattr(unit, "hallucinated", False):
+            continue
+        value = ((getattr(unit, "minerals", 0) or 0)
+                 + (getattr(unit, "vespene", 0) or 0))
+        if value <= 0:  # larvae, eggs, broodlings, MULEs, etc.
+            continue
+        deaths.append({
+            "second": ev.second,
+            "x": getattr(ev, "x", 0) or 0,
+            "y": getattr(ev, "y", 0) or 0,
+            "pid": unit.owner.pid,
+            "name": unit.name or "?",
+            "value": value,
+        })
+
+    clusters = []
+    for d in deaths:  # tracker events are already time-ordered
+        placed = False
+        for c in clusters:
+            if d["second"] - c["last"] > _FIGHT_GAP:
+                continue
+            cx, cy = c["sx"] / c["n"], c["sy"] / c["n"]
+            if (d["x"] - cx) ** 2 + (d["y"] - cy) ** 2 > _FIGHT_RADIUS ** 2:
+                continue
+            c["items"].append(d)
+            c["last"] = d["second"]
+            c["n"] += 1
+            c["sx"] += d["x"]
+            c["sy"] += d["y"]
+            c["value"] += d["value"]
+            placed = True
+            break
+        if not placed:
+            clusters.append({
+                "items": [d], "start": d["second"], "last": d["second"],
+                "n": 1, "sx": d["x"], "sy": d["y"], "value": d["value"],
+            })
+
+    fights = []
+    for c in clusters:
+        if c["n"] < _FIGHT_MIN_DEATHS or c["value"] < _FIGHT_MIN_VALUE:
+            continue
+        losses = {}
+        for d in c["items"]:
+            side = losses.setdefault(str(d["pid"]), {"value": 0, "units": {}})
+            side["value"] += d["value"]
+            side["units"][d["name"]] = side["units"].get(d["name"], 0) + 1
+        winner = None
+        pids = list(losses)
+        if len(pids) == 2:
+            a, b = pids
+            if losses[a]["value"] < losses[b]["value"]:
+                winner = int(a)
+            elif losses[b]["value"] < losses[a]["value"]:
+                winner = int(b)
+        fights.append({
+            "start": round(c["start"] / speed),
+            "end": round(c["last"] / speed),
+            "losses": losses,
+            "winner_pid": winner,
+        })
+    return fights
+
+
+def _trade_efficiency(fights, pid, opp_pid):
+    """Resources destroyed / resources lost across all detected fights."""
+    lost = sum(f["losses"].get(str(pid), {}).get("value", 0) for f in fights)
+    killed = sum(f["losses"].get(str(opp_pid), {}).get("value", 0) for f in fights)
+    if lost <= 0:
+        return 9.99 if killed > 0 else None
+    return round(min(killed / lost, 9.99), 2)
+
+
 def _matchup(replay):
     try:
         if replay.type != "1v1" or len(replay.players) != 2:
@@ -170,8 +264,17 @@ def parse_replay(path):
         except Exception:
             pass
 
+    speed = 1.4
+    try:
+        if duration:
+            speed = replay.game_length.seconds / duration
+    except Exception:
+        pass
+    fights = _detect_fights(replay, speed) if full else []
+
     data = {
         "path": path,
+        "fights": fights,
         "filename": os.path.basename(path),
         "file_hash": file_sha1(path),
         "map_name": getattr(replay, "map_name", None),
@@ -203,6 +306,7 @@ def parse_replay(path):
         metrics = _player_metrics(replay, p) if full else {}
         players.append({
             "name": p.name,
+            "pid": p.pid,
             "mmr": mmr,
             "race": getattr(p, "play_race", None),
             "team": getattr(p, "team_id", None),
@@ -213,6 +317,11 @@ def parse_replay(path):
             "build_order": _build_order_for(replay, p) if full else [],
             **metrics,
         })
+
+    if len(players) == 2 and fights:
+        a, b = players
+        a["trade_efficiency"] = _trade_efficiency(fights, a["pid"], b["pid"])
+        b["trade_efficiency"] = _trade_efficiency(fights, b["pid"], a["pid"])
     return data, players
 
 
@@ -226,6 +335,7 @@ def error_record(path, error):
         "path": path,
         "filename": os.path.basename(path),
         "file_hash": file_hash,
+        "fights": [],
         "map_name": None,
         "played_at": None,
         "duration_seconds": None,

@@ -107,6 +107,7 @@ function bars(container, rows, labelFn) {
 function fmtMetric(value, fmt) {
   if (value == null) return "–";
   if (fmt === "time") return fmtDuration(Math.round(value));
+  if (fmt === "ratio") return Number(value).toFixed(2);
   return Math.round(value * 10) / 10;
 }
 
@@ -327,7 +328,7 @@ const GRAPH_DEFS = [
 const PLAYER_COLORS = ["#4cc2ff", "#ff5d6c", "#3ddc84", "#ffd24c"];
 let detailReplay = null;
 
-function multiLineChart(el, seriesList, { yMax = null, yMin = 0, hline = null } = {}) {
+function multiLineChart(el, seriesList, { yMax = null, yMin = 0, hline = null, bands = [] } = {}) {
   el.innerHTML = "";
   const usable = seriesList.filter((s) => s.points.length >= 2);
   if (!usable.length) {
@@ -352,6 +353,14 @@ function multiLineChart(el, seriesList, { yMax = null, yMin = 0, hline = null } 
     const xv = xMin + (i / 6) * (xMax - xMin);
     labels += `<text x="${sx(xv)}" y="${H - 8}" text-anchor="middle">${fmtDuration(Math.round(xv))}</text>`;
   }
+  let bandsSvg = "";
+  for (const b of bands) {
+    const x1 = sx(Math.max(b.x1, xMin));
+    const x2 = sx(Math.min(b.x2, xMax));
+    bandsSvg += `<rect x="${x1.toFixed(1)}" y="${padT}"
+      width="${Math.max(x2 - x1, 3).toFixed(1)}" height="${H - padT - padB}"
+      fill="#ff5d6c" opacity="0.13"/>`;
+  }
   let hlineSvg = "";
   if (hline != null && hline >= yMin && hline <= yMaxV) {
     hlineSvg = `<line x1="${padL}" y1="${sy(hline)}" x2="${W - padR}" y2="${sy(hline)}"
@@ -362,7 +371,7 @@ function multiLineChart(el, seriesList, { yMax = null, yMin = 0, hline = null } 
       `${i ? "L" : "M"}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" ");
     return `<path class="mline" style="stroke:${s.color}" d="${d}"/>`;
   }).join("");
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}">${grid}${labels}${hlineSvg}${paths}</svg>`;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}">${grid}${labels}${bandsSvg}${hlineSvg}${paths}</svg>`;
 }
 
 const MU_COLORS = { T: "#6ea8ff", Z: "#b97aff", P: "#ffd24c" };
@@ -384,7 +393,42 @@ function renderDetailGraph(graphKey) {
       .filter((s) => s[graphKey] != null)
       .map((s) => ({ x: s.t, y: s[graphKey] })),
   }));
-  multiLineChart($("#detail-chart"), series);
+  const bands = (detailReplay.fights || []).map((f) =>
+    ({ x1: f.start, x2: Math.max(f.end, f.start + 5) }));
+  multiLineChart($("#detail-chart"), series, { bands });
+}
+
+function fightsSection(r) {
+  const fights = r.fights || [];
+  if (!fights.length) return "";
+  const rows = fights.map((f) => {
+    const sides = r.players.map((p, i) => {
+      const L = f.losses[String(p.pid)] || { value: 0, units: {} };
+      const units = Object.entries(L.units)
+        .sort((a, b) => b[1] - a[1]).slice(0, 6)
+        .map(([n, c]) => `${c}&times; ${esc(n)}`).join(", ");
+      return `<div class="fight-side">
+        <span class="legend-dot" style="background:${PLAYER_COLORS[i % PLAYER_COLORS.length]}"></span>
+        <b>&minus;${L.value.toLocaleString()}</b>
+        <span class="muted">${units || "no losses"}</span></div>`;
+    }).join("");
+    const winner = r.players.find((p) => p.pid === f.winner_pid);
+    const outcome = winner
+      ? `<span class="${winner.result === "Win" ||
+          (myNames.length && myNames.includes(winner.name))
+          ? "wr-good" : ""}" style="color:${
+          PLAYER_COLORS[r.players.indexOf(winner) % PLAYER_COLORS.length]}">
+          ${esc(winner.name)} won trade</span>`
+      : `<span class="muted">even trade</span>`;
+    return `<div class="fight-row">
+      <div class="fight-time">${fmtDuration(f.start)}</div>
+      <div class="fight-sides">${sides}</div>
+      <div class="fight-outcome">${outcome}</div>
+    </div>`;
+  }).join("");
+  return `<div class="fights-section">
+    <h4>Fights <span class="muted">(${fights.length} engagements,
+      shaded on the graphs above)</span></h4>${rows}</div>`;
 }
 
 async function openDetail(id) {
@@ -431,6 +475,7 @@ async function openDetail(id) {
       </div>
       <div id="detail-chart" class="chart"></div>
     </div>
+    ${fightsSection(r)}
     <div class="players-grid">${playersHtml}</div>`;
   document.querySelectorAll(".chart-tabs button").forEach((b) =>
     b.addEventListener("click", () => renderDetailGraph(b.dataset.graph)));
