@@ -47,6 +47,21 @@ imports all your replays (a few minutes for large collections — progress is
 shown in the header), and auto-detects your player name. You can adjust the
 replay folders and player names in the **Settings** tab.
 
+## Updating to the latest version
+
+When a new version is released, the app shows an **"Update available"** flag in
+the top-right corner (it checks GitHub automatically).
+
+To install the update:
+
+1. **Close the app.**
+2. Run **`update.bat`** in the app folder (double-click it).
+3. Start the app again.
+
+`update.bat` pulls the latest code (via git if you cloned, otherwise by
+downloading the newest version from GitHub) and updates dependencies. Your
+stats database (`data\`) is preserved.
+
 ## Running from the command line (optional)
 
 ```powershell
@@ -62,3 +77,13 @@ python -m venv .venv
 - FastAPI + SQLite backend
 - pywebview (Edge WebView2) desktop shell
 - Dependency-free vanilla JS frontend
+
+## Releasing updates (for the maintainer)
+
+The in-app update check compares the `VERSION` file in this repo against each
+user's local copy. **When you push changes you want others to get, bump the
+number in `VERSION`** (e.g. `0.2.0` -> `0.2.1`) and commit it. Users will then
+see the "Update available" flag and can run `update.bat`.
+
+The repo the app checks against is set in `sc2tracker/config.py`
+(`GITHUB_REPO` / `GITHUB_BRANCH`).

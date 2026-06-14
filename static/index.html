@@ -18,6 +18,8 @@
     <button class="tab" data-tab="trends">Trends</button>
     <button class="tab" data-tab="settings">Settings</button>
   </nav>
+  <div class="header-spacer"></div>
+  <button id="update-flag" class="update-flag hidden">&#8593; Update available</button>
   <div id="scan-indicator" class="scan-indicator hidden">
     <span class="spinner"></span><span id="scan-text">Scanning…</span>
   </div>
@@ -136,6 +138,14 @@
       <textarea id="s-dirs" rows="5" spellcheck="false"></textarea>
       <div id="s-dirs-status" class="muted"></div>
     </div>
+    <div class="panel">
+      <h2>Excluded maps</h2>
+      <p class="muted">One map name per line. These maps are hidden from all
+         stats and the replay list. Arcade / micro-trainer maps with no economy
+         (e.g. Marine Control) are skipped from analysis automatically.</p>
+      <textarea id="s-excluded" rows="4" spellcheck="false"
+        placeholder="e.g. Marine Control&#10;Micro Trainer"></textarea>
+    </div>
     <div class="actions">
       <button id="s-save" class="primary">Save settings</button>
       <button id="s-rescan">Rescan replays</button>
@@ -144,6 +154,15 @@
     <div class="panel">
       <h2>Database</h2>
       <div id="s-counts" class="muted"></div>
+    </div>
+    <div class="panel">
+      <h2>Software updates</h2>
+      <div id="update-status" class="muted">Checking for updates…</div>
+      <p class="muted">To install an update: close the app, then run
+         <b>update.bat</b> in the app folder. Your stats are kept.</p>
+      <div class="actions">
+        <button id="u-check">Check for updates</button>
+      </div>
     </div>
   </section>
 </main>

@@ -328,7 +328,11 @@ const GRAPH_DEFS = [
 const PLAYER_COLORS = ["#4cc2ff", "#ff5d6c", "#3ddc84", "#ffd24c"];
 let detailReplay = null;
 
-function multiLineChart(el, seriesList, { yMax = null, yMin = 0, hline = null, bands = [] } = {}) {
+function multiLineChart(el, seriesList, {
+  yMax = null, yMin = 0, hline = null, bands = [],
+  hover = true, xFormat = (x) => fmtDuration(Math.round(x)),
+  yFormat = (y) => Math.round(y).toLocaleString(),
+} = {}) {
   el.innerHTML = "";
   const usable = seriesList.filter((s) => s.points.length >= 2);
   if (!usable.length) {
@@ -371,23 +375,87 @@ function multiLineChart(el, seriesList, { yMax = null, yMin = 0, hline = null, b
       `${i ? "L" : "M"}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" ");
     return `<path class="mline" style="stroke:${s.color}" d="${d}"/>`;
   }).join("");
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}">${grid}${labels}${bandsSvg}${hlineSvg}${paths}</svg>`;
+
+  let hoverSvg = "";
+  if (hover) {
+    hoverSvg = `<line class="hover-vline" x1="0" y1="${padT}" x2="0" y2="${H - padB}"
+      style="display:none"/>` +
+      usable.map((s) => `<circle class="hover-dot" r="4" fill="${s.color}"
+        stroke="#0b0f17" stroke-width="1.5" style="display:none"/>`).join("");
+  }
+
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}">${grid}${labels}${bandsSvg}` +
+    `${hlineSvg}${paths}${hoverSvg}</svg>`;
+
+  if (!hover) return;
+  const svg = el.querySelector("svg");
+  const vline = svg.querySelector(".hover-vline");
+  const dots = [...svg.querySelectorAll(".hover-dot")];
+  const tip = document.createElement("div");
+  tip.className = "chart-tooltip";
+  tip.style.display = "none";
+  el.appendChild(tip);
+
+  const nearest = (pts, x) => {
+    let best = pts[0], bd = Infinity;
+    for (const p of pts) {
+      const d = Math.abs(p.x - x);
+      if (d < bd) { bd = d; best = p; }
+    }
+    return best;
+  };
+
+  const move = (ev) => {
+    const rect = svg.getBoundingClientRect();
+    const vbX = (ev.clientX - rect.left) * (W / rect.width);
+    const frac = Math.min(1, Math.max(0, (vbX - padL) / (W - padL - padR)));
+    const dataX = xMin + frac * (xMax - xMin);
+    // snap to the sample (across all series) closest to the cursor
+    let snapX = dataX, sd = Infinity;
+    for (const s of usable) {
+      const p = nearest(s.points, dataX);
+      const d = Math.abs(p.x - dataX);
+      if (d < sd) { sd = d; snapX = p.x; }
+    }
+    const vx = sx(snapX);
+    vline.setAttribute("x1", vx);
+    vline.setAttribute("x2", vx);
+    vline.style.display = "";
+    const rows = usable.map((s, i) => {
+      const p = nearest(s.points, snapX);
+      dots[i].setAttribute("cx", sx(p.x));
+      dots[i].setAttribute("cy", sy(p.y));
+      dots[i].style.display = "";
+      return `<div class="tt-row"><span class="legend-dot"
+        style="background:${s.color}"></span>${s.label || esc(s.name || s.key || "")}
+        <b>${yFormat(p.y)}</b></div>`;
+    }).join("");
+    tip.innerHTML = `<div class="tt-head">${xFormat(snapX)}</div>${rows}`;
+    tip.style.display = "";
+    const pxX = (vx / W) * rect.width;
+    const flip = pxX > rect.width - 160;
+    tip.style.left = (flip ? pxX - 12 : pxX + 14) + "px";
+    tip.style.transform = flip ? "translateX(-100%)" : "none";
+    tip.style.top = "8px";
+  };
+  const leave = () => {
+    vline.style.display = "none";
+    dots.forEach((d) => (d.style.display = "none"));
+    tip.style.display = "none";
+  };
+  svg.addEventListener("mousemove", move);
+  svg.addEventListener("mouseleave", leave);
 }
 
 const MU_COLORS = { T: "#6ea8ff", Z: "#b97aff", P: "#ffd24c" };
 const muColor = (mu) => MU_COLORS[mu[2]] || "#4cc2ff";
-
-function muLegend(el, series) {
-  el.innerHTML = series.map((s) => `
-    <span class="legend-item"><span class="legend-dot"
-      style="background:${s.color}"></span>${matchupSpan(s.key)}</span>`).join("");
-}
 
 function renderDetailGraph(graphKey) {
   document.querySelectorAll(".chart-tabs button").forEach((b) =>
     b.classList.toggle("active", b.dataset.graph === graphKey));
   const series = detailReplay.players.map((p, i) => ({
     name: p.name,
+    label: esc(p.name),
     color: PLAYER_COLORS[i % PLAYER_COLORS.length],
     points: (p.timeseries || [])
       .filter((s) => s[graphKey] != null)
@@ -598,24 +666,46 @@ function lineChart(el, points, { yMax = null, dots = null, raw = null } = {}) {
     <path class="line" d="${path}"/>${dotsSvg}</svg>`;
 }
 
-async function loadTrends() {
-  const [t, dur] = await Promise.all([api("/api/trends"), api("/api/duration")]);
+let durData = null;
+const durHidden = new Set();
 
-  const winSeries = dur.matchups.map((mu) => ({
-    key: mu.key,
-    color: muColor(mu.key),
+function durLegend(el) {
+  if (!durData) return;
+  el.innerHTML = durData.matchups.map((mu) => `
+    <span class="legend-item toggle ${durHidden.has(mu.key) ? "off" : ""}"
+      data-mu="${mu.key}"><span class="legend-dot"
+      style="background:${muColor(mu.key)}"></span>${matchupSpan(mu.key)}</span>`).join("")
+    || `<div class="muted">No matchups with enough games</div>`;
+  el.querySelectorAll(".legend-item").forEach((it) =>
+    it.addEventListener("click", () => {
+      const k = it.dataset.mu;
+      durHidden.has(k) ? durHidden.delete(k) : durHidden.add(k);
+      renderDuration();
+    }));
+}
+
+function renderDuration() {
+  const visible = durData.matchups.filter((mu) => !durHidden.has(mu.key));
+  const winSeries = visible.map((mu) => ({
+    key: mu.key, label: matchupSpan(mu.key), color: muColor(mu.key),
     points: mu.points.map((p) => ({ x: p.m * 60, y: p.winrate })),
   }));
-  muLegend($("#legend-durwin"), winSeries);
-  multiLineChart($("#chart-durwin"), winSeries, { yMax: 100, hline: 50 });
-
-  const countSeries = dur.matchups.map((mu) => ({
-    key: mu.key,
-    color: muColor(mu.key),
+  const countSeries = visible.map((mu) => ({
+    key: mu.key, label: matchupSpan(mu.key), color: muColor(mu.key),
     points: mu.points.map((p) => ({ x: p.m * 60, y: p.count })),
   }));
-  muLegend($("#legend-durcount"), countSeries);
-  multiLineChart($("#chart-durcount"), countSeries);
+  durLegend($("#legend-durwin"));
+  durLegend($("#legend-durcount"));
+  multiLineChart($("#chart-durwin"), winSeries,
+    { yMax: 100, hline: 50, yFormat: (v) => `${Math.round(v)}%` });
+  multiLineChart($("#chart-durcount"), countSeries,
+    { yFormat: (v) => Math.round(v) });
+}
+
+async function loadTrends() {
+  const [t, dur] = await Promise.all([api("/api/trends"), api("/api/duration")]);
+  durData = dur;
+  renderDuration();
 
   const winPts = t.games_series.map((g) => ({
     x: new Date(g.played_at).getTime(), y: g.win * 100,
@@ -644,26 +734,30 @@ async function loadSettings() {
   const s = await api("/api/settings");
   $("#s-names").value = s.player_names.join(", ");
   $("#s-dirs").value = s.replay_dirs.join("\n");
+  $("#s-excluded").value = (s.excluded_maps || []).join("\n");
   const missing = Object.entries(s.dirs_exist).filter(([, ok]) => !ok).map(([d]) => d);
   $("#s-dirs-status").textContent = missing.length
     ? `Warning - folder not found: ${missing.join("; ")}` : "";
   const c = await api("/api/summary");
   $("#s-counts").textContent =
     `${c.counts.total} replays imported, ${c.counts.errors} unreadable files skipped.`;
+  renderUpdateStatus();
 }
 
 $("#s-save").addEventListener("click", async () => {
   const body = {
     player_names: $("#s-names").value.split(",").map((s) => s.trim()).filter(Boolean),
     replay_dirs: $("#s-dirs").value.split("\n").map((s) => s.trim()).filter(Boolean),
+    excluded_maps: $("#s-excluded").value.split("\n").map((s) => s.trim()).filter(Boolean),
   };
   await fetch("/api/settings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  $("#s-msg").textContent = "Saved.";
+  $("#s-msg").textContent = "Saved. Stats updated.";
   setTimeout(() => ($("#s-msg").textContent = ""), 2500);
+  filtersLoaded = false;  // map dropdown may have changed
   loadSettings();
 });
 
@@ -674,7 +768,46 @@ $("#s-rescan").addEventListener("click", async () => {
   setTimeout(() => ($("#s-msg").textContent = ""), 2500);
 });
 
+/* ---------- updates ---------- */
+
+let updateInfo = null;
+
+function renderUpdateStatus() {
+  const el = $("#update-status");
+  if (!el) return;
+  if (!updateInfo) { el.textContent = "Checking for updates…"; return; }
+  if (updateInfo.error) {
+    el.innerHTML = `Current version <b>${esc(updateInfo.current)}</b>. ` +
+      `Could not check for updates (no internet?).`;
+  } else if (updateInfo.update_available) {
+    el.innerHTML = `<span class="wr-good">Update available:</span>
+      <b>${esc(updateInfo.latest)}</b> (you have ${esc(updateInfo.current)}).
+      <a href="${esc(updateInfo.repo_url)}" target="_blank">View on GitHub</a>`;
+  } else {
+    el.innerHTML = `You're up to date (version <b>${esc(updateInfo.current)}</b>).`;
+  }
+}
+
+async function checkUpdates() {
+  try {
+    updateInfo = await api("/api/update");
+  } catch (e) {
+    updateInfo = { error: "request failed", current: "?", update_available: false };
+  }
+  $("#update-flag").classList.toggle("hidden", !updateInfo.update_available);
+  renderUpdateStatus();
+}
+
+$("#update-flag").addEventListener("click", () => {
+  document.querySelector('.tab[data-tab="settings"]').click();
+});
+$("#u-check").addEventListener("click", () => {
+  $("#update-status").textContent = "Checking…";
+  checkUpdates();
+});
+
 /* ---------- boot ---------- */
 
 loadDashboard();
 pollScan();
+checkUpdates();

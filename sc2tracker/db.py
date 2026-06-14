@@ -130,6 +130,26 @@ def get_player_names():
     return get_setting("player_names") or []
 
 
+# Average collection rate (minerals+gas per minute) below which a game is
+# treated as a non-economy arcade / micro-trainer map (e.g. "Marine Control")
+# and excluded from analysis.
+ARCADE_MIN_COLLECTION = 50
+
+
+def get_excluded_maps():
+    """Map names the user has chosen to exclude from analysis (case-insensitive)."""
+    return [m for m in (get_setting("excluded_maps") or []) if m and m.strip()]
+
+
+def _excluded_maps_clause(alias="r"):
+    """Returns (sql_fragment, params) excluding user-listed maps, or ('', [])."""
+    maps = get_excluded_maps()
+    if not maps:
+        return "", []
+    qmarks = ",".join("?" for _ in maps)
+    return f"LOWER({alias}.map_name) NOT IN ({qmarks})", [m.strip().lower() for m in maps]
+
+
 # ---------- replays ----------
 
 def known_paths():
@@ -215,6 +235,17 @@ def my_games(names=None):
     if not names:
         return []
     qmarks = ",".join("?" for _ in names)
+    # Exclude arcade / micro-trainer maps: keep only games where at least one
+    # player actually mined resources (real economy). Games that failed a full
+    # parse have NULL collection_rate and are kept.
+    economy_clause = ("EXISTS (SELECT 1 FROM players pe WHERE pe.replay_id = r.id "
+                      "AND (pe.collection_rate IS NULL "
+                      "OR pe.collection_rate >= ?))")
+    map_clause, map_params = _excluded_maps_clause("r")
+    where = ["r.parse_error IS NULL", "r.game_type = '1v1'", economy_clause]
+    if map_clause:
+        where.append(map_clause)
+    params = list(names) + [ARCADE_MIN_COLLECTION] + map_params
     with connect() as conn:
         rows = conn.execute(
             f"""SELECT r.id AS replay_id, r.map_name, r.played_at,
@@ -233,9 +264,9 @@ def my_games(names=None):
                 FROM replays r
                 JOIN players me ON me.replay_id = r.id AND me.name IN ({qmarks})
                 LEFT JOIN players opp ON opp.replay_id = r.id AND opp.id != me.id
-                WHERE r.parse_error IS NULL AND r.game_type = '1v1'
+                WHERE {' AND '.join(where)}
                 ORDER BY r.played_at DESC""",
-            names,
+            params,
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -268,6 +299,10 @@ def list_replays(limit=50, offset=0, matchup=None, map_name=None,
             " WHERE px.replay_id = r.id AND px.name LIKE ?))"
         )
         params.extend([f"%{search}%", f"%{search}%"])
+    map_clause, map_params = _excluded_maps_clause("r")
+    if map_clause:
+        where.append(map_clause)
+        params.extend(map_params)
 
     sql = f"""SELECT r.id, r.filename, r.map_name, r.played_at, r.duration_seconds,
                      r.game_type, r.matchup, {opp_select},
@@ -316,6 +351,9 @@ def distinct_filters():
         matchups = [r["matchup"] for r in conn.execute(
             "SELECT DISTINCT matchup FROM replays WHERE parse_error IS NULL "
             "AND matchup IS NOT NULL ORDER BY matchup").fetchall()]
+    excluded = {m.strip().lower() for m in get_excluded_maps()}
+    if excluded:
+        maps = [m for m in maps if m.lower() not in excluded]
     return {"maps": maps, "matchups": matchups}
 
 

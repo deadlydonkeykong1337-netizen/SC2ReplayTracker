@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import db, scanner, stats
+from . import db, scanner, stats, updates
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -107,6 +107,7 @@ def api_filters():
 class Settings(BaseModel):
     replay_dirs: list[str]
     player_names: list[str]
+    excluded_maps: list[str] = []
 
 
 @app.get("/api/settings")
@@ -114,6 +115,7 @@ def api_get_settings():
     return {
         "replay_dirs": db.get_replay_dirs(),
         "player_names": db.get_player_names(),
+        "excluded_maps": db.get_excluded_maps(),
         "dirs_exist": {d: os.path.isdir(d) for d in db.get_replay_dirs()},
     }
 
@@ -122,6 +124,7 @@ def api_get_settings():
 def api_set_settings(s: Settings):
     db.set_setting("replay_dirs", [d.strip() for d in s.replay_dirs if d.strip()])
     db.set_setting("player_names", [n.strip() for n in s.player_names if n.strip()])
+    db.set_setting("excluded_maps", [m.strip() for m in s.excluded_maps if m.strip()])
     scanner.start_watcher()
     return {"ok": True}
 
@@ -135,6 +138,11 @@ def api_scan():
 @app.get("/api/scan/status")
 def api_scan_status():
     return scanner.state.snapshot()
+
+
+@app.get("/api/update")
+def api_update():
+    return updates.check()
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

@@ -9,6 +9,19 @@ DB_PATH = DATA_DIR / "sc2tracker.sqlite3"
 HOST = "127.0.0.1"
 PORT = 8642
 
+# GitHub repository used for in-app update checks and update.bat.
+# Change these if you fork/rename the repo.
+GITHUB_REPO = "deadlydonkeykong1337-netizen/SC2ReplayTracker"
+GITHUB_BRANCH = "main"
+
+
+def app_version():
+    """Local app version, read from the VERSION file at the project root."""
+    try:
+        return (PROJECT_DIR / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "0.0.0"
+
 
 def default_replay_dirs():
     """Find likely SC2 replay folders on this machine."""
